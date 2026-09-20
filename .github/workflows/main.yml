@@ -1,0 +1,36 @@
+name: Sync All Repositories to GitLab
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-all:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH key for GitLab
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.GITLAB_SSH_PRIVATE_KEY }}
+
+      - name: Add GitLab to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
+
+      - name: Sync All Repos
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GITLAB_USER: "voidlainux"
+        run: |
+          REPOS=$(gh repo list --source --limit 100 --json name --jq '.[].name')
+          
+          for REPO in $REPOS; do
+            echo "====== Syncing: $REPO ======"
+            git clone --mirror https://${{ github.actor }}:${GH_TOKEN}@github.com/${{ github.actor }}/$REPO.git
+            cd $REPO.git
+            git push --mirror git@gitlab.com:$GITLAB_USER/$REPO.git || echo "Failed to push $REPO"
+            cd ..
+            rm -rf $REPO.git
+          done
